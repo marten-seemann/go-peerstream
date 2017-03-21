@@ -17,7 +17,7 @@ import (
 type StreamHandler func(s *Stream)
 
 // Stream is an io.{Read,Write,Close}r to a remote counterpart.
-// It wraps a spdystream.Stream, and links it to a Conn and groups
+// It wraps a smux.Stream, and links it to a Conn and groups
 type Stream struct {
 	smuxStream smux.Stream
 
@@ -44,7 +44,7 @@ func (s *Stream) String() string {
 	return fmt.Sprintf(f, s.conn.NetConn().LocalAddr(), s.conn.NetConn().RemoteAddr())
 }
 
-// Stream returns the underlying stream muxer Stream
+// Stream returns the underlying smux.Stream
 func (s *Stream) Stream() smux.Stream {
 	return s.smuxStream
 }
