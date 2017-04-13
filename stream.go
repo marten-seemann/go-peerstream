@@ -41,7 +41,7 @@ func newStream(ss smux.Stream, c *Conn) *Stream {
 // String returns a string representation of the Stream
 func (s *Stream) String() string {
 	f := "<peerstream.Stream %s <--> %s>"
-	return fmt.Sprintf(f, s.conn.NetConn().LocalAddr(), s.conn.NetConn().RemoteAddr())
+	return fmt.Sprintf(f, s.conn.Conn().LocalAddr(), s.conn.Conn().RemoteAddr())
 }
 
 // Stream returns the underlying smux.Stream

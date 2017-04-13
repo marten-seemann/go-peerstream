@@ -50,7 +50,7 @@ func (mn *myNotifee) OpenedStream(*Stream) {}
 func (mn *myNotifee) ClosedStream(*Stream) {}
 
 func TestNotificationOrdering(t *testing.T) {
-	s := NewSwarm(nil)
+	s := NewSwarm()
 	notifiee := &myNotifee{conns: make(map[*Conn]bool)}
 
 	s.Notify(notifiee)
