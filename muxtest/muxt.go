@@ -2,6 +2,7 @@ package muxtest
 
 import (
 	"bytes"
+	"context"
 	crand "crypto/rand"
 	"fmt"
 	"io"
@@ -12,14 +13,17 @@ import (
 	"sync"
 	"testing"
 
+	peer "github.com/libp2p/go-libp2p-peer"
 	ps "github.com/libp2p/go-peerstream"
 
-	smux "github.com/jbenet/go-stream-muxer"
+	conn "github.com/libp2p/go-libp2p-conn"
+	smux "github.com/libp2p/go-stream-muxer"
 	tcpc "github.com/libp2p/go-tcp-transport"
+	testutil "github.com/libp2p/go-testutil"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-var zeroaddr = ma.StringCast("/ip4/0.0.0.0/tcp/0")
+var localaddr = ma.StringCast("/ip4/127.0.0.1/tcp/0")
 
 var randomness []byte
 var nextPort = 20000
@@ -61,8 +65,9 @@ type echoSetup struct {
 }
 
 func singleConn(t *testing.T, tr smux.Transport) echoSetup {
+	listenerIdentity := testutil.RandIdentityOrFatal(t)
 	tcp := tcpc.NewTCPTransport()
-	swarm := ps.NewSwarm(tr)
+	swarm := ps.NewSwarm()
 	swarm.SetStreamHandler(func(s *ps.Stream) {
 		defer s.Close()
 		log("accepted stream")
@@ -71,16 +76,17 @@ func singleConn(t *testing.T, tr smux.Transport) echoSetup {
 	})
 
 	log("listening at %s", "localhost:0")
-	d, err := tcp.Dialer(zeroaddr)
+	l, err := tcp.Listen(localaddr)
 	checkErr(t, err)
-	l, err := tcp.Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0"))
+	cl, err := conn.WrapTransportListener(context.Background(), l, listenerIdentity.ID(), tr, listenerIdentity.PrivateKey())
 	checkErr(t, err)
-
-	_, err = swarm.AddListener(l)
+	_, err = swarm.AddListener(cl)
 	checkErr(t, err)
 
 	log("dialing to %s", l.Multiaddr())
-	nc1, err := d.Dial(l.Multiaddr())
+	dialerIdentity := testutil.RandIdentityOrFatal(t)
+	dialer := conn.NewDialer(dialerIdentity.ID(), dialerIdentity.PrivateKey(), nil, tr)
+	nc1, err := dialer.Dial(context.Background(), l.Multiaddr(), listenerIdentity.ID())
 	checkErr(t, err)
 
 	c1, err := swarm.AddConn(nc1)
@@ -94,7 +100,7 @@ func singleConn(t *testing.T, tr smux.Transport) echoSetup {
 
 func makeSwarm(t *testing.T, tr smux.Transport, nListeners int) *ps.Swarm {
 	tcp := tcpc.NewTCPTransport()
-	swarm := ps.NewSwarm(tr)
+	swarm := ps.NewSwarm()
 	swarm.SetStreamHandler(func(s *ps.Stream) {
 		defer s.Close()
 		log("accepted stream")
@@ -103,10 +109,13 @@ func makeSwarm(t *testing.T, tr smux.Transport, nListeners int) *ps.Swarm {
 	})
 
 	for i := 0; i < nListeners; i++ {
+		listenerIdentity := testutil.RandIdentityOrFatal(t)
 		log("%p listening at %s", swarm, "localhost:0")
-		l, err := tcp.Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0"))
+		l, err := tcp.Listen(localaddr)
 		checkErr(t, err)
-		_, err = swarm.AddListener(l)
+		cl, err := conn.WrapTransportListener(context.Background(), l, listenerIdentity.ID(), tr, listenerIdentity.PrivateKey())
+		checkErr(t, err)
+		_, err = swarm.AddListener(cl)
 		checkErr(t, err)
 	}
 
@@ -122,12 +131,12 @@ func makeSwarms(t *testing.T, tr smux.Transport, nSwarms, nListeners int) []*ps.
 }
 
 func SubtestConstructSwarm(t *testing.T, tr smux.Transport) {
-	ps.NewSwarm(tr)
+	ps.NewSwarm()
 }
 
 func SubtestSimpleWrite(t *testing.T, tr smux.Transport) {
 	tcp := tcpc.NewTCPTransport()
-	swarm := ps.NewSwarm(tr)
+	swarm := ps.NewSwarm()
 	defer swarm.Close()
 
 	piper, pipew := io.Pipe()
@@ -140,19 +149,20 @@ func SubtestSimpleWrite(t *testing.T, tr smux.Transport) {
 	})
 
 	log("listening at %s", "localhost:0")
-	l, err := tcp.Listen(ma.StringCast("/ip4/0.0.0.0/tcp/0"))
+	l, err := tcp.Listen(localaddr)
 	checkErr(t, err)
 
-	_, err = swarm.AddListener(l)
+	listenerIdentity := testutil.RandIdentityOrFatal(t)
+	cl, err := conn.WrapTransportListener(context.Background(), l, listenerIdentity.ID(), tr, listenerIdentity.PrivateKey())
 	checkErr(t, err)
-
-	d, err := tcp.Dialer(zeroaddr)
+	_, err = swarm.AddListener(cl)
 	checkErr(t, err)
 
 	log("dialing to %s", l.Addr().String())
-	nc1, err := d.Dial(l.Multiaddr())
+	dialerIdentity := testutil.RandIdentityOrFatal(t)
+	dialer := conn.NewDialer(dialerIdentity.ID(), dialerIdentity.PrivateKey(), nil, tr)
+	nc1, err := dialer.Dial(context.Background(), l.Multiaddr(), listenerIdentity.ID())
 	checkErr(t, err)
-
 	c1, err := swarm.AddConn(nc1)
 	checkErr(t, err)
 	defer c1.Close()
@@ -172,7 +182,7 @@ func SubtestSimpleWrite(t *testing.T, tr smux.Transport) {
 	_, err = s1.Read(buf2)
 	checkErr(t, err)
 	if string(buf2) != string(buf1) {
-		t.Error("buf1 and buf2 not equal: %s != %s", string(buf1), string(buf2))
+		t.Errorf("buf1 and buf2 not equal: %s != %s", string(buf1), string(buf2))
 	}
 
 	buf3 := make([]byte, len(buf1))
@@ -180,7 +190,7 @@ func SubtestSimpleWrite(t *testing.T, tr smux.Transport) {
 	_, err = piper.Read(buf3)
 	checkErr(t, err)
 	if string(buf3) != string(buf1) {
-		t.Error("buf1 and buf3 not equal: %s != %s", string(buf1), string(buf3))
+		t.Errorf("buf1 and buf3 not equal: %s != %s", string(buf1), string(buf3))
 	}
 }
 
@@ -311,18 +321,11 @@ func SubtestStressNSwarmNConnNStreamNMsg(t *testing.T, tr smux.Transport, nSwarm
 
 		ls := b.Listeners()
 		l := ls[mrand.Intn(len(ls))]
-		nl := l.NetListener()
-		nla := nl.Addr()
 
-		tcp := tcpc.NewTCPTransport()
-		d, err := tcp.Dialer(zeroaddr)
+		dialerIdentity := testutil.RandIdentityOrFatal(t)
+		dialer := conn.NewDialer(dialerIdentity.ID(), dialerIdentity.PrivateKey(), nil, tr)
+		nc, err := dialer.Dial(context.Background(), l.Multiaddr(), peer.ID(0))
 		checkErr(t, err)
-
-		nc, err := d.Dial(nl.Multiaddr())
-		if err != nil {
-			t.Fatal(fmt.Errorf("net.Dial(%s, %s): %s", nla.Network(), nla.String(), err))
-			return
-		}
 
 		c, err := a.AddConn(nc)
 		if err != nil {
