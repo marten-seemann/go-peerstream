@@ -272,10 +272,18 @@ func (s *Swarm) AddConn(conn iconn.Conn, groups ...Group) (*Conn, error) {
 	s.ConnHandler()(c)
 
 	// go listen for incoming streams on this connection
-	go c.conn.Serve(func(ss smux.Stream) {
-		stream := s.setupStream(ss, c)
-		s.StreamHandler()(stream) // call our handler
-	})
+	go func() {
+		for {
+			str, err := c.conn.AcceptStream()
+			if err != nil {
+				break
+			}
+			go func() {
+				stream := s.setupStream(str, c)
+				s.StreamHandler()(stream) // call our handler
+			}()
+		}
+	}()
 
 	s.notifyAll(func(n Notifiee) {
 		n.Connected(c)
