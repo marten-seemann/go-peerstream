@@ -33,7 +33,7 @@ type Groupable interface {
 // give things group memebership
 type groupSet struct {
 	m map[Group]struct{}
-	sync.Mutex
+	sync.RWMutex
 }
 
 func (gs *groupSet) Add(g Group) {
@@ -49,15 +49,15 @@ func (gs *groupSet) Remove(g Group) {
 }
 
 func (gs *groupSet) Has(g Group) bool {
-	gs.Lock()
-	defer gs.Unlock()
+	gs.RLock()
+	defer gs.RUnlock()
 	_, ok := gs.m[g]
 	return ok
 }
 
 func (gs *groupSet) Groups() []Group {
-	gs.Lock()
-	defer gs.Unlock()
+	gs.RLock()
+	defer gs.RUnlock()
 
 	out := make([]Group, 0, len(gs.m))
 	for k := range gs.m {
@@ -74,9 +74,9 @@ func (gs *groupSet) AddSet(gs2 *groupSet) {
 	switch {
 	case p1 < p2:
 		gs.Lock()
-		gs2.Lock()
+		gs2.RLock()
 		defer gs.Unlock()
-		defer gs2.Unlock()
+		defer gs2.RUnlock()
 	case p1 > p2:
 		gs2.Lock()
 		gs.Lock()
