@@ -200,8 +200,10 @@ func (s *Swarm) Conns() []*Conn {
 	return open
 }
 
-// TODO: the primary use of the above Conns method is to check if there is a
-// connection to a given peer. That is extremely wasteful in terms of cpu and
+// ConnsWithGroup returns all the connections with a given Group
+//
+// TODO: the primary use of this method is to check if there is a connection
+// to a given peer. That is extremely wasteful in terms of cpu and
 // allocations. This method is optimized for that specific usecase without
 // restructuring much of how go-peerstream works. Realistically, we need to
 // refactor the s.conns field to be a map from peer.ID to *Conn, but this
