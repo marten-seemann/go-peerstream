@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tpt "github.com/libp2p/go-libp2p-transport"
+	smux "github.com/libp2p/go-stream-muxer"
 )
 
 type fakeconn struct {
@@ -73,5 +74,46 @@ func TestNotificationOrdering(t *testing.T) {
 	wg.Wait()
 	if notifiee.failed {
 		t.Fatal("we've got problems")
+	}
+}
+
+type fakeSmuxConn struct {
+	smux.Conn
+	closed bool
+}
+
+func (fsc fakeSmuxConn) IsClosed() bool {
+	return fsc.closed
+}
+
+func (fsc fakeSmuxConn) Close() error {
+	return nil
+}
+
+func TestConnsWithGroup(t *testing.T) {
+	s := NewSwarm(nil)
+	a := newConn(nil, &fakeSmuxConn{}, s)
+	b := newConn(nil, &fakeSmuxConn{closed: true}, s)
+	c := newConn(nil, &fakeSmuxConn{closed: true}, s)
+	g := "foo"
+	a.AddGroup(g)
+	b.AddGroup(g)
+	c.AddGroup(g)
+
+	s.conns[a] = struct{}{}
+	s.conns[b] = struct{}{}
+	s.conns[c] = struct{}{}
+
+	conns := s.ConnsWithGroup(g)
+	if len(conns) != 1 {
+		t.Fatal("should have only gotten one")
+	}
+
+	if !b.closing {
+		t.Fatal("b should at least be closing")
+	}
+
+	if !c.closing {
+		t.Fatal("c should at least be closing")
 	}
 }
