@@ -10,9 +10,6 @@ import (
 	smux "github.com/libp2p/go-stream-muxer"
 )
 
-// fd is a (file) descriptor, unix style
-type fd uint32
-
 // GarbageCollectTimeout governs the periodic connection closer.
 var GarbageCollectTimeout = 5 * time.Second
 
