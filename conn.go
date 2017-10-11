@@ -236,14 +236,14 @@ func (s *Swarm) setupConn(netConn tpt.Conn, isServer bool) (*Conn, error) {
 
 	// first, check if we already have it, to avoid constructing it
 	// if it is already there
-	s.connLock.Lock()
+	s.connLock.RLock()
 	for c := range s.conns {
 		if c.netConn == netConn {
-			s.connLock.Unlock()
+			s.connLock.RUnlock()
 			return c, nil
 		}
 	}
-	s.connLock.Unlock()
+	s.connLock.RUnlock()
 	// construct the connection without hanging onto the lock
 	// (as there could be deadlock if so.)
 

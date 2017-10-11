@@ -66,17 +66,17 @@ func NewSwarm(t smux.Transport) *Swarm {
 
 // String returns a string with various internal stats
 func (s *Swarm) String() string {
-	s.listenerLock.Lock()
+	s.listenerLock.RLock()
 	ls := len(s.listeners)
-	s.listenerLock.Unlock()
+	s.listenerLock.RUnlock()
 
-	s.connLock.Lock()
+	s.connLock.RLock()
 	cs := len(s.conns)
-	s.connLock.Unlock()
+	s.connLock.RUnlock()
 
-	s.streamLock.Lock()
+	s.streamLock.RLock()
 	ss := len(s.streams)
-	s.streamLock.Unlock()
+	s.streamLock.RUnlock()
 
 	str := "<peerstream.Swarm %d listeners %d conns %d streams>"
 	return fmt.Sprintf(str, ls, cs, ss)
@@ -86,23 +86,23 @@ func (s *Swarm) String() string {
 func (s *Swarm) Dump() string {
 	str := s.String() + "\n"
 
-	s.listenerLock.Lock()
+	s.listenerLock.RLock()
 	for l := range s.listeners {
 		str += fmt.Sprintf("\t%s %v\n", l, l.Groups())
 	}
-	s.listenerLock.Unlock()
+	s.listenerLock.RUnlock()
 
-	s.connLock.Lock()
+	s.connLock.RLock()
 	for c := range s.conns {
 		str += fmt.Sprintf("\t%s %v\n", c, c.Groups())
 	}
-	s.connLock.Unlock()
+	s.connLock.RUnlock()
 
-	s.streamLock.Lock()
+	s.streamLock.RLock()
 	for ss := range s.streams {
 		str += fmt.Sprintf("\t%s %v\n", ss, ss.Groups())
 	}
-	s.streamLock.Unlock()
+	s.streamLock.RUnlock()
 
 	return str
 }
