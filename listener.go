@@ -29,6 +29,7 @@ type Listener struct {
 
 func newListener(nl tpt.Listener, s *Swarm) *Listener {
 	return &Listener{
+		groups:    groupSet{m: make(map[Group]struct{})},
 		netList:   nl,
 		swarm:     s,
 		acceptErr: make(chan error, 10),
@@ -112,12 +113,11 @@ func (l *Listener) accept() {
 			defer func() { <-limit }() // sema up
 			defer wg.Done()
 
-			conn2, err := l.swarm.addConn(conn, true)
+			_, err := l.swarm.addConn(conn, true, l.Groups())
 			if err != nil {
 				l.acceptErr <- err
 				return
 			}
-			conn2.groups.AddSet(&l.groups) // add out groups
 		}(conn)
 	}
 }
@@ -147,7 +147,7 @@ func (l *Listener) Close() error {
 }
 
 // addListener is the internal version of AddListener.
-func (s *Swarm) addListener(nl tpt.Listener) (*Listener, error) {
+func (s *Swarm) addListener(nl tpt.Listener, initialGroups []Group) (*Listener, error) {
 	if nl == nil {
 		return nil, errors.New("nil listener")
 	}
@@ -164,6 +164,9 @@ func (s *Swarm) addListener(nl tpt.Listener) (*Listener, error) {
 
 	l := newListener(nl, s)
 	s.listeners[l] = struct{}{}
+	for g := range initialGroups {
+		l.groups.m[g] = struct{}{}
+	}
 	go l.accept()
 	return l, nil
 }

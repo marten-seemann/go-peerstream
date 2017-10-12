@@ -96,13 +96,14 @@ func TestConnsWithGroup(t *testing.T) {
 	b := newConn(nil, &fakeSmuxConn{closed: true}, s)
 	c := newConn(nil, &fakeSmuxConn{closed: true}, s)
 	g := "foo"
-	a.AddGroup(g)
-	b.AddGroup(g)
-	c.AddGroup(g)
 
 	s.conns[a] = struct{}{}
 	s.conns[b] = struct{}{}
 	s.conns[c] = struct{}{}
+
+	a.AddGroup(g)
+	b.AddGroup(g)
+	c.AddGroup(g)
 
 	conns := s.ConnsWithGroup(g)
 	if len(conns) != 1 {

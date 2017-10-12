@@ -108,7 +108,7 @@ func main() {
 	// Or, you can bind connections to ConnGroup ids. You can bind a conn to
 	// multiple groups. And, if conn wasn't in swarm, it calls swarm.AddConn.
 	// You can use any Go `KeyType` as a group A `KeyType` as in maps...)
-	swarm.AddConnToGroup(c2, 1)
+	c2.AddGroup(1)
 
 	// And then use that group to select a connection. Swarm will use any
 	// connection it finds in that group, using a SelectConn you can rebind:
