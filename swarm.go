@@ -26,9 +26,10 @@ type Swarm struct {
 	streamLock sync.RWMutex
 
 	// active connections. generate new Streams
-	conns    map[*Conn]struct{}
-	connIdx  map[Group]map[*Conn]struct{}
-	connLock sync.RWMutex
+	conns     map[*Conn]struct{}
+	connIdx   map[Group]map[*Conn]struct{}
+	connByNet map[tpt.Conn]*Conn
+	connLock  sync.RWMutex
 
 	// active listeners. generate new Listeners
 	listeners    map[*Listener]struct{}
@@ -54,6 +55,7 @@ func NewSwarm(t smux.Transport) *Swarm {
 		transport:     t,
 		streams:       make(map[*Stream]struct{}),
 		conns:         make(map[*Conn]struct{}),
+		connByNet:     make(map[tpt.Conn]*Conn),
 		connIdx:       make(map[Group]map[*Conn]struct{}),
 		listeners:     make(map[*Listener]struct{}),
 		notifiees:     make(map[Notifiee]struct{}),

@@ -239,11 +239,9 @@ func (s *Swarm) setupConn(netConn tpt.Conn, isServer bool, initialGroups []Group
 	// first, check if we already have it, to avoid constructing it
 	// if it is already there
 	s.connLock.RLock()
-	for c := range s.conns {
-		if c.netConn == netConn {
-			s.connLock.RUnlock()
-			return c, nil
-		}
+	if c, ok := s.connByNet[netConn]; ok {
+		s.connLock.RUnlock()
+		return c, nil
 	}
 	s.connLock.RUnlock()
 	// construct the connection without hanging onto the lock
@@ -265,15 +263,15 @@ func (s *Swarm) setupConn(netConn tpt.Conn, isServer bool, initialGroups []Group
 	defer s.connLock.Unlock()
 
 	// check for it again as it may have been added already. (TOCTTOU)
-	for c := range s.conns {
-		if c.netConn == netConn {
-			return c, nil
-		}
+	if c, ok := s.connByNet[netConn]; ok {
+		s.connLock.RUnlock()
+		return c, nil
 	}
 
 	// add the connection
 	c := newConn(netConn, ssConn, s)
 	s.conns[c] = struct{}{}
+	s.connByNet[netConn] = c
 	for _, g := range initialGroups {
 		c.groups.m[s] = struct{}{}
 		s.addConnGroup(c, g)
@@ -373,6 +371,7 @@ func (s *Swarm) removeConn(conn *Conn) {
 	s.connLock.Lock()
 	defer s.connLock.Unlock()
 	delete(s.conns, conn)
+	delete(s.connByNet, conn.netConn)
 	for g := range conn.groups.Groups() {
 		s.removeConnGroup(conn, g)
 	}
