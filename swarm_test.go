@@ -2,6 +2,7 @@ package peerstream
 
 import (
 	"fmt"
+	"net"
 	"sync"
 	"testing"
 	"time"
@@ -16,6 +17,14 @@ type fakeconn struct {
 
 func (f *fakeconn) Close() error {
 	return nil
+}
+
+type fakeTransport struct {
+	f func(c net.Conn, isServer bool) (smux.Conn, error)
+}
+
+func (f fakeTransport) NewConn(c net.Conn, isServer bool) (smux.Conn, error) {
+	return (f.f)(c, isServer)
 }
 
 type myNotifee struct {
@@ -116,5 +125,36 @@ func TestConnsWithGroup(t *testing.T) {
 
 	if !c.closing {
 		t.Fatal("c should at least be closing")
+	}
+}
+
+func TestAddConnTwice(t *testing.T) {
+	ready := new(sync.WaitGroup)
+	pause := make(chan struct{})
+	conns := make(chan *Conn)
+	s := NewSwarm(fakeTransport{func(c net.Conn, isServer bool) (smux.Conn, error) {
+		ready.Done()
+		<-pause
+		return nil, nil
+	}})
+	c := new(fakeconn)
+	for i := 0; i < 2; i++ {
+		ready.Add(1)
+		go func() {
+			pc, err := s.AddConn(c)
+			if err != nil {
+				t.Error(err)
+			}
+			conns <- pc
+		}()
+	}
+	ready.Wait()
+	close(pause)
+
+	ca := <-conns
+	cb := <-conns
+
+	if ca != cb {
+		t.Fatalf("initialized a single net conn twice: %v != %v", ca, cb)
 	}
 }
