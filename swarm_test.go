@@ -171,7 +171,7 @@ func TestConnIdx(t *testing.T) {
 	}
 
 	g := "foo"
-	g2 := "foo"
+	g2 := "bar"
 
 	if len(s.ConnsWithGroup(g)) != 0 {
 		t.Fatal("should have gotten none")
