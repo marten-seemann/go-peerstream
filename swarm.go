@@ -204,8 +204,9 @@ func (s *Swarm) Conns() []*Conn {
 // ConnsWithGroup returns all the connections with a given Group
 func (s *Swarm) ConnsWithGroup(g Group) []*Conn {
 	s.connLock.RLock()
-	conns := make([]*Conn, 0, 1)
-	for c := range s.connIdx[g] {
+	cs := s.connIdx[g]
+	conns := make([]*Conn, 0, len(cs))
+	for c := range cs {
 		conns = append(conns, c)
 	}
 	s.connLock.RUnlock()
