@@ -264,7 +264,6 @@ func (s *Swarm) setupConn(netConn tpt.Conn, isServer bool, initialGroups []Group
 
 	// check for it again as it may have been added already. (TOCTTOU)
 	if c, ok := s.connByNet[netConn]; ok {
-		s.connLock.RUnlock()
 		return c, nil
 	}
 
