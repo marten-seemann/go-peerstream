@@ -158,3 +158,39 @@ func TestAddConnTwice(t *testing.T) {
 		t.Fatalf("initialized a single net conn twice: %v != %v", ca, cb)
 	}
 }
+
+func TestConnIdx(t *testing.T) {
+	s := NewSwarm(nil)
+	c, err := s.AddConn(new(fakeconn))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	g := "foo"
+	g2 := "foo"
+
+	if len(s.ConnsWithGroup(g)) != 0 {
+		t.Fatal("should have gotten none")
+	}
+
+	c.AddGroup(g)
+	if len(s.ConnsWithGroup(g)) != 1 {
+		t.Fatal("should have only gotten one")
+	}
+
+	c.Close()
+	if len(s.ConnsWithGroup(g)) != 0 {
+		t.Fatal("should have gotten none")
+	}
+
+	c.AddGroup(g2)
+	if len(s.ConnsWithGroup(g)) != 0 {
+		t.Fatal("should still have gotten none")
+	}
+	if len(s.connIdx) != 0 {
+		t.Fatal("should have an empty index")
+	}
+	if len(s.conns) != 0 {
+		t.Fatal("should not be holding any connections")
+	}
+}

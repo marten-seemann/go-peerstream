@@ -371,7 +371,7 @@ func (s *Swarm) removeConn(conn *Conn) {
 	defer s.connLock.Unlock()
 	delete(s.conns, conn)
 	delete(s.connByNet, conn.netConn)
-	for g := range conn.groups.Groups() {
+	for _, g := range conn.groups.Groups() {
 		s.removeConnGroup(conn, g)
 	}
 }
