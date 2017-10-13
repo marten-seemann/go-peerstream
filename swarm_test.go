@@ -157,6 +157,10 @@ func TestAddConnTwice(t *testing.T) {
 	if ca != cb {
 		t.Fatalf("initialized a single net conn twice: %v != %v", ca, cb)
 	}
+	ca.Close()
+	if len(s.connByNet) != 0 || len(s.conns) != 0 {
+		t.Fatal("leaked connections")
+	}
 }
 
 func TestConnIdx(t *testing.T) {
