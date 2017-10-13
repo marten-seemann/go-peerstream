@@ -272,7 +272,7 @@ func (s *Swarm) setupConn(netConn tpt.Conn, isServer bool, initialGroups []Group
 	s.conns[c] = struct{}{}
 	s.connByNet[netConn] = c
 	for _, g := range initialGroups {
-		c.groups.m[s] = struct{}{}
+		c.groups.m[g] = struct{}{}
 		s.addConnGroup(c, g)
 	}
 	return c, nil

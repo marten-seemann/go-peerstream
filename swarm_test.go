@@ -178,8 +178,67 @@ func TestConnIdx(t *testing.T) {
 	}
 
 	c.AddGroup(g)
+	if !c.InGroup(g) {
+		t.Fatal("should be in the appropriate group")
+	}
 	if len(s.ConnsWithGroup(g)) != 1 {
 		t.Fatal("should have only gotten one")
+	}
+
+	c.Close()
+	if !c.InGroup(g) {
+		t.Fatal("should still be in the appropriate group")
+	}
+	if len(s.ConnsWithGroup(g)) != 0 {
+		t.Fatal("should have gotten none")
+	}
+
+	c.AddGroup(g2)
+	if !c.InGroup(g2) {
+		t.Fatal("should now be in group 2")
+	}
+	if c.InGroup("bla") {
+		t.Fatal("should not be in arbitrary groups")
+	}
+	if len(s.ConnsWithGroup(g)) != 0 {
+		t.Fatal("should still have gotten none")
+	}
+	if len(s.ConnsWithGroup(g2)) != 0 {
+		t.Fatal("should still have gotten none")
+	}
+	if len(s.connIdx) != 0 {
+		t.Fatal("should have an empty index")
+	}
+	if len(s.conns) != 0 {
+		t.Fatal("should not be holding any connections")
+	}
+}
+
+func TestAddConnWithGroups(t *testing.T) {
+	s := NewSwarm(nil)
+
+	g := "foo"
+	g2 := "bar"
+	g3 := "baz"
+
+	c, err := s.AddConn(new(fakeconn), g, g2)
+	if !c.InGroup(g) || !c.InGroup(g2) || c.InGroup(g3) {
+		t.Fatal("should be in the appropriate groups")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(s.ConnsWithGroup(g)) != 1 {
+		t.Fatal("should have gotten one")
+	}
+
+	if len(s.ConnsWithGroup(g2)) != 1 {
+		t.Fatal("should have gotten one")
+	}
+
+	if len(s.ConnsWithGroup(g3)) != 0 {
+		t.Fatal("should have gotten none")
 	}
 
 	c.Close()
@@ -187,10 +246,14 @@ func TestConnIdx(t *testing.T) {
 		t.Fatal("should have gotten none")
 	}
 
-	c.AddGroup(g2)
-	if len(s.ConnsWithGroup(g)) != 0 {
+	if len(s.ConnsWithGroup(g2)) != 0 {
+		t.Fatal("should have gotten none")
+	}
+
+	if len(s.ConnsWithGroup(g3)) != 0 {
 		t.Fatal("should still have gotten none")
 	}
+
 	if len(s.connIdx) != 0 {
 		t.Fatal("should have an empty index")
 	}
