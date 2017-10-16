@@ -77,3 +77,41 @@ func TestNotificationOrdering(t *testing.T) {
 		t.Fatal("we've got problems")
 	}
 }
+
+func TestBasicSwarm(t *testing.T) {
+	s := NewSwarm(fakeTransport{func(c net.Conn, isServer bool) (smux.Conn, error) {
+		return newFakeSmuxConn(), nil
+	}})
+	c, err := s.AddConn(new(fakeconn), "foo", "bar")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !c.InGroup("foo") || !c.InGroup("bar") || c.InGroup("baz") {
+		t.Fatal("conn should be in groups bar and baz")
+	}
+	conns := s.Conns()
+	connsInGroup := s.ConnsWithGroup("bar")
+	if len(conns) != 1 || len(connsInGroup) != 1 {
+		t.Fatal("expected one conn")
+	}
+	if conns[0] != c || connsInGroup[0] != c {
+		t.Fatal("expected our conn")
+	}
+
+	st, err := c.NewStream()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !st.InGroup("foo") || !st.InGroup("bar") || st.InGroup("baz") {
+		t.Fatal("stream should be in groups bar and baz")
+	}
+	streams := s.Streams()
+	streamsInGroup := s.StreamsWithGroup("bar")
+	if len(streams) != 1 || len(streamsInGroup) != 1 {
+		t.Fatal("expected one stream")
+	}
+	if streams[0] != st || streamsInGroup[0] != st {
+		t.Fatal("expected our stream")
+	}
+}

@@ -1,6 +1,7 @@
 package peerstream
 
 import (
+	"errors"
 	"net"
 	"sync"
 	"testing"
@@ -19,27 +20,81 @@ func (f *fakeconn) Close() error {
 
 var _ net.Conn = new(fakeconn)
 
+func newFakeSmuxConn() *fakeSmuxConn {
+	return &fakeSmuxConn{
+		closed: make(chan struct{}),
+	}
+}
+
 type fakeSmuxConn struct {
-	smux.Conn
-	closed bool
+	closeLock sync.Mutex
+	closed    chan struct{}
 }
 
 func (fsc *fakeSmuxConn) IsClosed() bool {
-	return fsc.closed
+	select {
+	case <-fsc.closed:
+		return true
+	default:
+		return false
+	}
+}
+
+// AcceptStream accepts a stream opened by the other side.
+func (fsc *fakeSmuxConn) AcceptStream() (smux.Stream, error) {
+	<-fsc.closed
+	return nil, errors.New("connection closed")
+}
+
+func (fsc *fakeSmuxConn) OpenStream() (smux.Stream, error) {
+	if fsc.IsClosed() {
+		return nil, errors.New("connection closed")
+	}
+	return &fakeSmuxStream{conn: fsc, closed: make(chan struct{})}, nil
 }
 
 func (fsc *fakeSmuxConn) Close() error {
+	fsc.closeLock.Lock()
+	defer fsc.closeLock.Unlock()
+	if fsc.IsClosed() {
+		return errors.New("already closed")
+	}
+	close(fsc.closed)
 	return nil
 }
 
-var _ smux.Conn = new(fakeSmuxConn)
+var _ smux.Conn = (*fakeSmuxConn)(nil)
+
+func TestConnBasic(t *testing.T) {
+	s := NewSwarm(fakeTransport{func(c net.Conn, isServer bool) (smux.Conn, error) {
+		return newFakeSmuxConn(), nil
+	}})
+	nc := new(fakeconn)
+	c, err := s.AddConn(nc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Swarm() != s {
+		t.Fatalf("incorrect swarm returned from connection")
+	}
+	if sc, ok := c.Conn().(*fakeSmuxConn); !ok {
+		t.Fatalf("expected a fakeSmuxConn, got %v", sc)
+	}
+
+	if c.NetConn() != nc {
+		t.Fatalf("expected %v, got %v", nc, c.NetConn())
+	}
+}
 
 func TestConnsWithGroup(t *testing.T) {
 	s := NewSwarm(nil)
-	a := newConn(nil, &fakeSmuxConn{}, s)
-	b := newConn(nil, &fakeSmuxConn{closed: true}, s)
-	c := newConn(nil, &fakeSmuxConn{closed: true}, s)
+	a := newConn(nil, newFakeSmuxConn(), s)
+	b := newConn(nil, newFakeSmuxConn(), s)
+	c := newConn(nil, newFakeSmuxConn(), s)
 	g := "foo"
+
+	b.Conn().Close()
+	c.Conn().Close()
 
 	s.conns[a] = struct{}{}
 	s.conns[b] = struct{}{}
@@ -52,6 +107,13 @@ func TestConnsWithGroup(t *testing.T) {
 	conns := s.ConnsWithGroup(g)
 	if len(conns) != 1 {
 		t.Fatal("should have only gotten one")
+	}
+	groups := a.Groups()
+	if len(groups) != 1 {
+		t.Fatal("should have only gotten one")
+	}
+	if groups[0] != g {
+		t.Fatalf("expected group '%v', got group '%v'", g, groups[0])
 	}
 
 	if !b.closing {
