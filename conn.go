@@ -113,7 +113,29 @@ func (c *Conn) AddGroup(g Group) {
 		return
 	}
 
-	c.swarm.addConnGroup(c, g)
+	c.addGroup(g)
+}
+
+// NOTE: must be called under the connIdxLock lock.
+func (c *Conn) removeGroup(g Group) {
+	m, ok := c.swarm.connIdx[g]
+	if !ok {
+		return
+	}
+	delete(m, c)
+	if len(m) == 0 {
+		delete(c.swarm.connIdx, g)
+	}
+}
+
+// NOTE: must be called under the connIdxLock lock.
+func (c *Conn) addGroup(g Group) {
+	m, ok := c.swarm.connIdx[g]
+	if !ok {
+		m = make(map[*Conn]struct{}, 1)
+		c.swarm.connIdx[g] = m
+	}
+	m[c] = struct{}{}
 }
 
 // NewStream returns a stream associated with this Conn.
@@ -273,7 +295,7 @@ func (s *Swarm) setupConn(netConn tpt.Conn, isServer bool, initialGroups []Group
 	s.connByNet[netConn] = c
 	for _, g := range initialGroups {
 		c.groups.m[g] = struct{}{}
-		s.addConnGroup(c, g)
+		c.addGroup(g)
 	}
 	return c, nil
 }
@@ -343,28 +365,6 @@ func (s *Swarm) removeStream(stream *Stream, reset bool) error {
 	return err
 }
 
-// NOTE: must be called under the connIdxLock lock.
-func (s *Swarm) removeConnGroup(c *Conn, g Group) {
-	m, ok := s.connIdx[g]
-	if !ok {
-		return
-	}
-	delete(m, c)
-	if len(m) == 0 {
-		delete(c.swarm.connIdx, g)
-	}
-}
-
-// NOTE: must be called under the connIdxLock lock.
-func (s *Swarm) addConnGroup(c *Conn, g Group) {
-	m, ok := c.swarm.connIdx[g]
-	if !ok {
-		m = make(map[*Conn]struct{}, 1)
-		c.swarm.connIdx[g] = m
-	}
-	m[c] = struct{}{}
-}
-
 func (s *Swarm) removeConn(conn *Conn) {
 	// remove from our maps
 	s.connLock.Lock()
@@ -372,6 +372,6 @@ func (s *Swarm) removeConn(conn *Conn) {
 	delete(s.conns, conn)
 	delete(s.connByNet, conn.netConn)
 	for _, g := range conn.groups.Groups() {
-		s.removeConnGroup(conn, g)
+		conn.removeGroup(g)
 	}
 }
