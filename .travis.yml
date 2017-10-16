@@ -1,9 +1,24 @@
-language: go
+sudo: false
 
+
+language: go
 go:
   - 1.8
-  - tip
-
+  
+install:
+  - go get github.com/whyrusleeping/gx
+  - go get github.com/whyrusleeping/gx-go
+  - gx install --global
 script:
-  - make test
-  # - go test -race -cpu=5 ./...
+  - gx test -v -race -coverprofile=coverage.txt -covermode=atomic .
+  
+after_success:
+  - bash <(curl -s https://codecov.io/bash)
+
+cache:
+  directories:
+    - $GOPATH/src/gx
+
+notifications:
+  email: false
+  
