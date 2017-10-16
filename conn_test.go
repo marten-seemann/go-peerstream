@@ -116,6 +116,10 @@ func TestConnsWithGroup(t *testing.T) {
 		t.Fatalf("expected group '%v', got group '%v'", g, groups[0])
 	}
 
+	b.closingLock.Lock()
+	defer b.closingLock.Unlock()
+	c.closingLock.Lock()
+	defer c.closingLock.Unlock()
 	if !b.closing {
 		t.Fatal("b should at least be closing")
 	}
