@@ -155,8 +155,13 @@ func TestAddConnTwice(t *testing.T) {
 	ca := <-conns
 	cb := <-conns
 
-	if ca != cb {
-		t.Fatalf("initialized a single net conn twice: %v != %v", ca, cb)
+	cc, err := s.AddConn(c)
+	if err != nil {
+		t.Error(err)
+	}
+
+	if ca != cb || ca != cc {
+		t.Fatalf("initialized a single net conn twice: %v != %v != %v", ca, cb, cc)
 	}
 	ca.Close()
 	if len(s.connByNet) != 0 || len(s.conns) != 0 {
