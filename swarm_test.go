@@ -114,4 +114,18 @@ func TestBasicSwarm(t *testing.T) {
 	if streams[0] != st || streamsInGroup[0] != st {
 		t.Fatal("expected our stream")
 	}
+
+	// Make sure these don't crash or deadlock.
+	s.String()
+	s.String()
+	s.Dump()
+	s.Dump()
+
+	if s.String() == "" {
+		t.Fatal("got no 'String' from swarm")
+	}
+
+	if s.Dump() == "" {
+		t.Fatal("got no 'Dump' from swarm")
+	}
 }
