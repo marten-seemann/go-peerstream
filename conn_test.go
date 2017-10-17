@@ -129,46 +129,6 @@ func TestConnsWithGroup(t *testing.T) {
 	}
 }
 
-func TestAddConnTwice(t *testing.T) {
-	ready := new(sync.WaitGroup)
-	pause := make(chan struct{})
-	conns := make(chan *Conn)
-	s := NewSwarm(fakeTransport{func(c net.Conn, isServer bool) (smux.Conn, error) {
-		ready.Done()
-		<-pause
-		return nil, nil
-	}})
-	c := new(fakeconn)
-	for i := 0; i < 2; i++ {
-		ready.Add(1)
-		go func() {
-			pc, err := s.AddConn(c)
-			if err != nil {
-				t.Error(err)
-			}
-			conns <- pc
-		}()
-	}
-	ready.Wait()
-	close(pause)
-
-	ca := <-conns
-	cb := <-conns
-
-	cc, err := s.AddConn(c)
-	if err != nil {
-		t.Error(err)
-	}
-
-	if ca != cb || ca != cc {
-		t.Fatalf("initialized a single net conn twice: %v != %v != %v", ca, cb, cc)
-	}
-	ca.Close()
-	if len(s.connByNet) != 0 || len(s.conns) != 0 {
-		t.Fatal("leaked connections")
-	}
-}
-
 func TestConnIdx(t *testing.T) {
 	s := NewSwarm(nil)
 	c, err := s.AddConn(new(fakeconn))

@@ -258,17 +258,6 @@ func (s *Swarm) setupConn(netConn tpt.Conn, isServer bool, initialGroups []Group
 		return nil, errors.New("nil conn")
 	}
 
-	// first, check if we already have it, to avoid constructing it
-	// if it is already there
-	s.connLock.RLock()
-	if c, ok := s.connByNet[netConn]; ok {
-		s.connLock.RUnlock()
-		return c, nil
-	}
-	s.connLock.RUnlock()
-	// construct the connection without hanging onto the lock
-	// (as there could be deadlock if so.)
-
 	var ssConn smux.Conn
 	if s.transport != nil {
 		// create a new stream muxer connection
@@ -284,15 +273,9 @@ func (s *Swarm) setupConn(netConn tpt.Conn, isServer bool, initialGroups []Group
 	s.connLock.Lock()
 	defer s.connLock.Unlock()
 
-	// check for it again as it may have been added already. (TOCTTOU)
-	if c, ok := s.connByNet[netConn]; ok {
-		return c, nil
-	}
-
 	// add the connection
 	c := newConn(netConn, ssConn, s)
 	s.conns[c] = struct{}{}
-	s.connByNet[netConn] = c
 	for _, g := range initialGroups {
 		c.groups.m[g] = struct{}{}
 		c.addGroup(g)
@@ -370,7 +353,6 @@ func (s *Swarm) removeConn(conn *Conn) {
 	s.connLock.Lock()
 	defer s.connLock.Unlock()
 	delete(s.conns, conn)
-	delete(s.connByNet, conn.netConn)
 	for _, g := range conn.groups.Groups() {
 		conn.removeGroup(g)
 	}

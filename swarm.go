@@ -26,10 +26,9 @@ type Swarm struct {
 	streamLock sync.RWMutex
 
 	// active connections. generate new Streams
-	conns     map[*Conn]struct{}
-	connIdx   map[Group]map[*Conn]struct{}
-	connByNet map[tpt.Conn]*Conn
-	connLock  sync.RWMutex
+	conns    map[*Conn]struct{}
+	connIdx  map[Group]map[*Conn]struct{}
+	connLock sync.RWMutex
 
 	// active listeners. generate new Listeners
 	listeners    map[*Listener]struct{}
@@ -55,7 +54,6 @@ func NewSwarm(t smux.Transport) *Swarm {
 		transport:     t,
 		streams:       make(map[*Stream]struct{}),
 		conns:         make(map[*Conn]struct{}),
-		connByNet:     make(map[tpt.Conn]*Conn),
 		connIdx:       make(map[Group]map[*Conn]struct{}),
 		listeners:     make(map[*Listener]struct{}),
 		notifiees:     make(map[Notifiee]struct{}),
@@ -259,10 +257,11 @@ func (s *Swarm) AddListener(l tpt.Listener, groups ...Group) (*Listener, error) 
 // depends on the RateLimit option
 // func (s *Swarm) AddListenerWithRateLimit(net.Listner, RateLimit) // TODO
 
-// AddConn gives the Swarm ownership of tpt.Conn. The Swarm will open a
-// SPDY session and begin listening for Streams.
-// Returns the resulting Swarm-associated peerstream.Conn.
-// Idempotent: if the Connection has already been added, this is a no-op.
+// AddConn gives the Swarm ownership of tpt.Conn. The Swarm will negotiate an
+// appropriate multiplexer for the connection and and begin listening for
+// Streams. Returns the resulting Swarm-associated peerstream.Conn.
+//
+// Do not use the tpt.Conn once you've passed it to this method.
 func (s *Swarm) AddConn(tptConn tpt.Conn, groups ...Group) (*Conn, error) {
 	return s.addConn(tptConn, false, groups)
 }
