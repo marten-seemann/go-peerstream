@@ -100,7 +100,42 @@ func (c *Conn) InGroup(g Group) bool {
 
 // AddGroup assigns given Group to Conn.
 func (c *Conn) AddGroup(g Group) {
+	c.swarm.connLock.Lock()
+	defer c.swarm.connLock.Unlock()
+
 	c.groups.Add(g)
+
+	if _, ok := c.swarm.conns[c]; !ok {
+		// Not being tracked.
+		// DO NOT REMOVE THIS CHECK.
+		// DO NOT USE MULTIPLE LOCKS.
+		// YOU WILL LEAK CONNECTIONS!
+		return
+	}
+
+	c.addGroup(g)
+}
+
+// NOTE: must be called under the connIdxLock lock.
+func (c *Conn) removeGroup(g Group) {
+	m, ok := c.swarm.connIdx[g]
+	if !ok {
+		return
+	}
+	delete(m, c)
+	if len(m) == 0 {
+		delete(c.swarm.connIdx, g)
+	}
+}
+
+// NOTE: must be called under the connIdxLock lock.
+func (c *Conn) addGroup(g Group) {
+	m, ok := c.swarm.connIdx[g]
+	if !ok {
+		m = make(map[*Conn]struct{}, 1)
+		c.swarm.connIdx[g] = m
+	}
+	m[c] = struct{}{}
 }
 
 // NewStream returns a stream associated with this Conn.
@@ -167,17 +202,6 @@ func (c *Conn) Close() error {
 	return err
 }
 
-// ConnsWithGroup narrows down a set of connections to those in a given group.
-func ConnsWithGroup(g Group, conns []*Conn) []*Conn {
-	var out []*Conn
-	for _, c := range conns {
-		if c.InGroup(g) {
-			out = append(out, c)
-		}
-	}
-	return out
-}
-
 // ConnInConns returns true if a connection belongs to the
 // conns slice.
 func ConnInConns(c1 *Conn, conns []*Conn) bool {
@@ -197,8 +221,8 @@ func ConnInConns(c1 *Conn, conns []*Conn) bool {
 
 // addConn is the internal version of AddConn. we need the server bool
 // as spdystream requires it.
-func (s *Swarm) addConn(netConn tpt.Conn, isServer bool) (*Conn, error) {
-	c, err := s.setupConn(netConn, isServer)
+func (s *Swarm) addConn(netConn tpt.Conn, isServer bool, initialGroups []Group) (*Conn, error) {
+	c, err := s.setupConn(netConn, isServer, initialGroups)
 	if err != nil {
 		return nil, err
 	}
@@ -229,23 +253,10 @@ func (s *Swarm) addConn(netConn tpt.Conn, isServer bool) (*Conn, error) {
 
 // setupConn adds the relevant connection to the map, first checking if it
 // was already there.
-func (s *Swarm) setupConn(netConn tpt.Conn, isServer bool) (*Conn, error) {
+func (s *Swarm) setupConn(netConn tpt.Conn, isServer bool, initialGroups []Group) (*Conn, error) {
 	if netConn == nil {
 		return nil, errors.New("nil conn")
 	}
-
-	// first, check if we already have it, to avoid constructing it
-	// if it is already there
-	s.connLock.Lock()
-	for c := range s.conns {
-		if c.netConn == netConn {
-			s.connLock.Unlock()
-			return c, nil
-		}
-	}
-	s.connLock.Unlock()
-	// construct the connection without hanging onto the lock
-	// (as there could be deadlock if so.)
 
 	var ssConn smux.Conn
 	if s.transport != nil {
@@ -262,16 +273,13 @@ func (s *Swarm) setupConn(netConn tpt.Conn, isServer bool) (*Conn, error) {
 	s.connLock.Lock()
 	defer s.connLock.Unlock()
 
-	// check for it again as it may have been added already. (TOCTTOU)
-	for c := range s.conns {
-		if c.netConn == netConn {
-			return c, nil
-		}
-	}
-
 	// add the connection
 	c := newConn(netConn, ssConn, s)
 	s.conns[c] = struct{}{}
+	for _, g := range initialGroups {
+		c.groups.m[g] = struct{}{}
+		c.addGroup(g)
+	}
 	return c, nil
 }
 
@@ -343,6 +351,9 @@ func (s *Swarm) removeStream(stream *Stream, reset bool) error {
 func (s *Swarm) removeConn(conn *Conn) {
 	// remove from our maps
 	s.connLock.Lock()
+	defer s.connLock.Unlock()
 	delete(s.conns, conn)
-	s.connLock.Unlock()
+	for _, g := range conn.groups.Groups() {
+		conn.removeGroup(g)
+	}
 }

@@ -10,9 +10,6 @@ import (
 	smux "github.com/libp2p/go-stream-muxer"
 )
 
-// fd is a (file) descriptor, unix style
-type fd uint32
-
 // GarbageCollectTimeout governs the periodic connection closer.
 var GarbageCollectTimeout = 5 * time.Second
 
@@ -30,6 +27,7 @@ type Swarm struct {
 
 	// active connections. generate new Streams
 	conns    map[*Conn]struct{}
+	connIdx  map[Group]map[*Conn]struct{}
 	connLock sync.RWMutex
 
 	// active listeners. generate new Listeners
@@ -56,6 +54,7 @@ func NewSwarm(t smux.Transport) *Swarm {
 		transport:     t,
 		streams:       make(map[*Stream]struct{}),
 		conns:         make(map[*Conn]struct{}),
+		connIdx:       make(map[Group]map[*Conn]struct{}),
 		listeners:     make(map[*Listener]struct{}),
 		notifiees:     make(map[Notifiee]struct{}),
 		selectConn:    SelectRandomConn,
@@ -69,17 +68,17 @@ func NewSwarm(t smux.Transport) *Swarm {
 
 // String returns a string with various internal stats
 func (s *Swarm) String() string {
-	s.listenerLock.Lock()
+	s.listenerLock.RLock()
 	ls := len(s.listeners)
-	s.listenerLock.Unlock()
+	s.listenerLock.RUnlock()
 
-	s.connLock.Lock()
+	s.connLock.RLock()
 	cs := len(s.conns)
-	s.connLock.Unlock()
+	s.connLock.RUnlock()
 
-	s.streamLock.Lock()
+	s.streamLock.RLock()
 	ss := len(s.streams)
-	s.streamLock.Unlock()
+	s.streamLock.RUnlock()
 
 	str := "<peerstream.Swarm %d listeners %d conns %d streams>"
 	return fmt.Sprintf(str, ls, cs, ss)
@@ -89,23 +88,23 @@ func (s *Swarm) String() string {
 func (s *Swarm) Dump() string {
 	str := s.String() + "\n"
 
-	s.listenerLock.Lock()
+	s.listenerLock.RLock()
 	for l := range s.listeners {
 		str += fmt.Sprintf("\t%s %v\n", l, l.Groups())
 	}
-	s.listenerLock.Unlock()
+	s.listenerLock.RUnlock()
 
-	s.connLock.Lock()
+	s.connLock.RLock()
 	for c := range s.conns {
 		str += fmt.Sprintf("\t%s %v\n", c, c.Groups())
 	}
-	s.connLock.Unlock()
+	s.connLock.RUnlock()
 
-	s.streamLock.Lock()
+	s.streamLock.RLock()
 	for ss := range s.streams {
 		str += fmt.Sprintf("\t%s %v\n", ss, ss.Groups())
 	}
-	s.streamLock.Unlock()
+	s.streamLock.RUnlock()
 
 	return str
 }
@@ -201,20 +200,12 @@ func (s *Swarm) Conns() []*Conn {
 }
 
 // ConnsWithGroup returns all the connections with a given Group
-//
-// TODO: the primary use of this method is to check if there is a connection
-// to a given peer. That is extremely wasteful in terms of cpu and
-// allocations. This method is optimized for that specific usecase without
-// restructuring much of how go-peerstream works. Realistically, we need to
-// refactor the s.conns field to be a map from peer.ID to *Conn, but this
-// should do for now.
 func (s *Swarm) ConnsWithGroup(g Group) []*Conn {
 	s.connLock.RLock()
-	conns := make([]*Conn, 0, 1)
-	for c := range s.conns {
-		if c.InGroup(g) {
-			conns = append(conns, c)
-		}
+	cs := s.connIdx[g]
+	conns := make([]*Conn, 0, len(cs))
+	for c := range cs {
+		conns = append(conns, c)
 	}
 	s.connLock.RUnlock()
 
@@ -257,8 +248,8 @@ func (s *Swarm) Streams() []*Stream {
 
 // AddListener adds libp2p-transport Listener to the Swarm,
 // and immediately begins accepting incoming connections.
-func (s *Swarm) AddListener(l tpt.Listener) (*Listener, error) {
-	return s.addListener(l)
+func (s *Swarm) AddListener(l tpt.Listener, groups ...Group) (*Listener, error) {
+	return s.addListener(l, groups)
 }
 
 // AddListenerWithRateLimit adds Listener to the Swarm, and immediately
@@ -266,12 +257,13 @@ func (s *Swarm) AddListener(l tpt.Listener) (*Listener, error) {
 // depends on the RateLimit option
 // func (s *Swarm) AddListenerWithRateLimit(net.Listner, RateLimit) // TODO
 
-// AddConn gives the Swarm ownership of tpt.Conn. The Swarm will open a
-// SPDY session and begin listening for Streams.
-// Returns the resulting Swarm-associated peerstream.Conn.
-// Idempotent: if the Connection has already been added, this is a no-op.
-func (s *Swarm) AddConn(tptConn tpt.Conn) (*Conn, error) {
-	return s.addConn(tptConn, false)
+// AddConn gives the Swarm ownership of tpt.Conn. The Swarm will negotiate an
+// appropriate multiplexer for the connection and and begin listening for
+// Streams. Returns the resulting Swarm-associated peerstream.Conn.
+//
+// Do not use the tpt.Conn once you've passed it to this method.
+func (s *Swarm) AddConn(tptConn tpt.Conn, groups ...Group) (*Conn, error) {
+	return s.addConn(tptConn, false, groups)
 }
 
 // NewStream opens a new Stream on the best available connection,
@@ -345,11 +337,6 @@ func (s *Swarm) NewStreamWithConn(conn *Conn) (*Stream, error) {
 	}
 	s.connLock.RUnlock()
 	return s.createStream(conn)
-}
-
-// AddConnToGroup assigns given Group to conn
-func (s *Swarm) AddConnToGroup(conn *Conn, g Group) {
-	conn.groups.Add(g)
 }
 
 // StreamsWithGroup returns all the streams with a given Group
